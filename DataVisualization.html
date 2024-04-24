@@ -1,0 +1,336 @@
+<!--         7CCSMSDV - Simulation and Data Visualization Assignment Description-->
+
+<!--  NAME      : KAVANA RANGASWAMY-->
+<!--  STUDENT ID: K23106657-->
+<!--  DATE      : 25th April 2024-->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Scatterplot of House Price vs. Area for Different House Types</title>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <style>
+    /* Style definitions for the tooltip, axes, legend, grid, and layout */
+    .tooltip {
+      opacity: 0;
+      background-color: white;
+      border: solid;
+      border-width: 2px;
+      border-radius: 5px;
+      padding: 5px;
+      position: absolute;
+      text-align: left;
+    }
+    .axis-label {
+      font-size: 14px;
+      font-family: sans-serif;
+    }
+    .legend-box {
+      fill: white;
+      stroke: black;
+      opacity: 0.8;
+    }
+    .legend {
+      font-size: 12px;
+      font-family: sans-serif;
+    }
+    .grid .tick line {
+      stroke: lightgrey;
+      stroke-opacity: 0.7;
+      shape-rendering: crispEdges;
+    }
+    .grid path {
+      stroke-width: 0;
+    }
+    .chart-title {
+      font-size: 18px;
+      text-anchor: middle;
+      font-family: sans-serif;
+    }
+    #scatterPlot {
+      position: relative;
+      height: 600px;
+    }
+    select {
+      margin-right: 10px;
+    }
+    #content {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      margin-top: 20px;
+    }
+    #filters, #houseTypeFilterContainer {
+      margin-right: 20px;
+    }
+    #scatterPlot {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 600px;
+      width: calc(100% - 240px);
+    }
+    .filter-item {
+      display: block;
+    }
+    select {
+      display: block;
+      margin-bottom: 10px;
+    }
+    .filter-heading {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    svg {
+      display: block;
+      margin: auto;
+    }
+    .x-axis text, .y-axis text {
+      font-size: 11px;
+      font-family: Verdana;
+    }
+  </style>
+</head>
+<body>
+<div id="content">
+  <div id="filters">
+    <h3>House Characteristics</h3>
+    <label for="bathroomsFilter">Number of Bathrooms:</label>
+    <select id="bathroomsFilter">
+      <option value="all">All</option>
+    </select>
+    <label for="bedroomsFilter">Number of Bedrooms:</label>
+    <select id="bedroomsFilter">
+      <option value="all">All</option>
+    </select>
+    <label for="receptionsFilter">Number of Receptions:</label>
+    <select id="receptionsFilter">
+      <option value="all">All</option>
+    </select>
+  </div>
+  <div id="scatterPlot"></div>
+  <div id="houseTypeFilterContainer">
+    <h3>Property Type</h3>
+    <label for="houseTypeFilter">House Type:</label>
+    <select id="houseTypeFilter">
+      <option value="all">All</option>
+    </select>
+  </div>
+</div>
+
+<script>
+  // Loading data asynchronously using D3.json
+  d3.json('https://raw.githubusercontent.com/KavanaRangaswamy/DataVisualization/main/London.JSON').then(function(data) {
+    // Create filter options from data
+    let bathroomOptions = Array.from(new Set(data.map(d => d['No. of Bathrooms'])));
+    let bedroomOptions = Array.from(new Set(data.map(d => d['No. of Bedrooms'])));
+    let receptionOptions = Array.from(new Set(data.map(d => d['No. of Receptions'])));
+    let houseTypeOptions = Array.from(new Set(data.map(d => d['House Type'])));
+
+    // Append options to select elements for filtering
+    bathroomOptions.forEach(option => {
+      d3.select("#bathroomsFilter").append('option').text(option).attr('value', option);
+    });
+    bedroomOptions.forEach(option => {
+      d3.select("#bedroomsFilter").append('option').text(option).attr('value', option);
+    });
+    receptionOptions.forEach(option => {
+      d3.select("#receptionsFilter").append('option').text(option).attr('value', option);
+    });
+    houseTypeOptions.forEach(option => {
+      d3.select("#houseTypeFilter").append('option').text(option).attr('value', option);
+    });
+
+    // Defining margins and dimensions for the scatter plot
+    const margin = {top: 100, right: 20, bottom: 40, left: 120},
+      width = 900 - margin.left - margin.right,
+      height = 600 - margin.top - margin.bottom;
+
+    // Defineing scales for the x and y axes
+    const xScale = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d['Area in sq ft'])])
+      .range([0, width]);
+    const yScale = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.Price)])
+      .range([height, 0]);
+
+    // Createing SVG element for the visualization
+    const svg = d3.select("#scatterPlot").append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Tooltip for displaying property details on hover
+    const tooltip = d3.select("body").append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+
+    // Color mapping for different house types
+    const houseTypeColors = {
+      'House': "#8c564b",
+      'Flat / Apartment': "#66c2a5",
+      'Duplex': "#8da0cb",
+      'Mews': "#e78ac3",
+      'New development': "#a6d854",
+      'Penthouse': "#7f7f7f",
+      'Studio': "#e5c494"
+    };
+
+    // legend for the house types
+    const legend = svg.selectAll(".legend")
+      .data(Object.entries(houseTypeColors))
+      .enter().append("g")
+      .attr("class", "legend")
+      .attr("transform", function(d, i) { return "translate(0," + i * 20 + ")"; });
+
+    legend.append("rect")
+      .attr("x", width - 18)
+      .attr("width", 18)
+      .attr("height", 18)
+      .style("fill", d => d[1]);
+
+    legend.append("text")
+      .attr("x", width - 24)
+      .attr("y", 9)
+      .attr("dy", ".35em")
+      .style("text-anchor", "end")
+      .text(d => d[0]);
+
+    // opacity settings for the dots
+    const initialOpacity = 1.0;
+    const highlightOpacity = 1.0;
+    const dullOpacity = 0.2;
+
+    // Function to update the scatter plot based on filtered data
+    function updateScatterPlot(filteredData) {
+      const dots = svg.selectAll(".dot")
+        .data(filteredData)
+        .join(
+          enter => enter.append("circle")
+            .attr("class", "dot")
+            .attr("r", 5)
+            .attr("cx", d => xScale(d['Area in sq ft']))
+            .attr("cy", d => yScale(d.Price))
+            .style("fill", function(d) {
+              return houseTypeColors[d['House Type']] || "#ff7f0e"; // default color if not specified
+            })
+            .style("opacity", initialOpacity)
+            .on("mouseover", function(event, d) {
+              tooltip.transition()
+                .duration(200)
+                .style("opacity", .9);
+              tooltip.html(`Property: ${d['Property Name']}<br>Area: ${d['Area in sq ft']} sq ft<br>Price: £${d.Price}`)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function(d) {
+              tooltip.transition()
+                .duration(500)
+                .style("opacity", 0);
+            }),
+          update => update,
+          exit => exit.remove()
+        );
+
+      // click events to highlight or de-highlight points
+      dots.on("click", function(event, clickedData) {
+        const isActive = d3.select(this).classed("active");
+
+        if (isActive) {
+          // De-highlight all dots if the current one is active
+          svg.selectAll(".dot")
+            .style("opacity", initialOpacity)
+            .classed("active", false);
+        } else {
+          // Dim all dots
+          svg.selectAll(".dot")
+            .style("opacity", dullOpacity)
+            .classed("active", false);
+
+          // To highlight only the clicked dot
+          d3.select(this)
+            .classed("active", true)
+            .style("opacity", highlightOpacity);
+        }
+      });
+    }
+
+    // Initial plot with all data
+    updateScatterPlot(data);
+
+    // Adding axes to the SVG
+    svg.append("g")
+      .attr("transform", `translate(0,${height})`)
+      .attr("class", "x-axis")
+      .call(d3.axisBottom(xScale));
+    svg.append("g")
+      .attr("class", "y-axis")
+      .call(d3.axisLeft(yScale));
+
+    // Adding axis labels
+    svg.append("text")
+      .attr("class", "axis-label")
+      .attr("transform", `translate(${width / 2},${height + margin.bottom - 10})`)
+      .style("text-anchor", "middle")
+      .text("Area");
+    svg.append("text")
+      .attr("class", "axis-label")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 20 - margin.left)
+      .attr("x", -height / 2)
+      .attr("dy", "1em")
+      .style("text-anchor", "middle")
+      .text("Price");
+
+    // Adding grid lines to the plot for better readability
+    svg.append("g")
+      .attr("class", "grid")
+      .call(d3.axisLeft(yScale).tickSize(-width).tickFormat(""));
+    svg.append("g")
+      .attr("class", "grid")
+      .attr("transform", "translate(0," + height + ")")
+      .call(d3.axisBottom(xScale).tickSize(-height).tickFormat(""));
+
+    // Adding title to the scatter plot
+    svg.append("text")
+      .attr("x", (width / 2))
+      .attr("y", 0 - (margin.top / 2))
+      .attr("text-anchor", "middle")
+      .style("font-size", "24px")
+      .style("text-decoration", "underline")
+      .text("Scatterplot of House Price vs. Area for Different House Types");
+
+    // Function to handle filter changes and update the plot accordingly
+    function filterData() {
+      let selectedBathrooms = d3.select("#bathroomsFilter").node().value;
+      let selectedBedrooms = d3.select("#bedroomsFilter").node().value;
+      let selectedReceptions = d3.select("#receptionsFilter").node().value;
+      let selectedHouseType = d3.select("#houseTypeFilter").node().value;
+
+      let filteredData = data.filter(d => {
+        return (selectedBathrooms === "all" || d['No. of Bathrooms'] == selectedBathrooms) &&
+          (selectedBedrooms === "all" || d['No. of Bedrooms'] == selectedBedrooms) &&
+          (selectedReceptions === "all" || d['No. of Receptions'] == selectedReceptions) &&
+          (selectedHouseType === "all" || d['House Type'] == selectedHouseType);
+      });
+      svg.selectAll(".dot").remove(); // Clear previous dots
+      updateScatterPlot(filteredData); // Update plot with filtered data
+    }
+
+    // Event listeners for the filter select elements
+    d3.select("#bathroomsFilter").on("change", filterData);
+    d3.select("#bedroomsFilter").on("change", filterData);
+    d3.select("#receptionsFilter").on("change", filterData);
+    d3.select("#houseTypeFilter").on("change", filterData);
+
+  }).catch(function(error){
+    console.log(error);
+  });
+</script>
+</body>
+</html>
+
+
+<!--Thankyou!-->
